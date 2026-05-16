@@ -1277,8 +1277,10 @@ async function consume(totalMB) {
   const targetBytes = totalMB * 1024 * 1024;
   const startTime = performance.now();
   let downloaded = 0;
-  let stopRequested = false;
+  let completed = false;
+  let networkError = null;
   STATE.abort = new AbortController();
+  const signal = STATE.abort.signal;
 
   renderProgress({ percent: 0, consumed: 0, total: totalMB, speed: 0, eta: 0, elapsed: 0 });
 
@@ -1291,7 +1293,7 @@ async function consume(totalMB) {
   }
 
   const uiTimer = setInterval(() => {
-    if (stopRequested) return;
+    if (signal.aborted) return;
     const elapsed = (performance.now() - startTime) / 1000;
     const consumedMB = downloaded / 1024 / 1024;
     const speed = consumedMB / elapsed;
@@ -1308,35 +1310,51 @@ async function consume(totalMB) {
   }, 100);
 
   async function worker() {
-    while (queue.length > 0 && !stopRequested && downloaded < targetBytes) {
+    while (queue.length > 0 && !signal.aborted && downloaded < targetBytes) {
       const size = queue.shift();
       if (!size) break;
       const url = ENDPOINT + size + '&t=' + Date.now() + '-' + Math.random();
-      const res = await fetch(url, {
-        signal: STATE.abort.signal,
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      let res;
+      try {
+        res = await fetch(url, { signal, cache: 'no-store' });
+      } catch (e) {
+        if (e.name !== 'AbortError') { networkError = e; STATE.abort.abort(); }
+        return;
+      }
+      if (!res.ok) {
+        networkError = new Error('HTTP ' + res.status);
+        STATE.abort.abort();
+        return;
+      }
       const reader = res.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        downloaded += value.length;
-        if (downloaded >= targetBytes) {
-          stopRequested = true;
-          try { await reader.cancel(); } catch {}
-          break;
+      try {
+        while (!signal.aborted) {
+          let chunk;
+          try { chunk = await reader.read(); } catch (e) {
+            if (e.name !== 'AbortError') { networkError = e; STATE.abort.abort(); }
+            return;
+          }
+          if (chunk.done) break;
+          downloaded += chunk.value.length;
+          if (downloaded >= targetBytes) {
+            completed = true;
+            STATE.abort.abort();
+            return;
+          }
         }
+      } finally {
+        try { reader.cancel(); } catch {}
       }
     }
   }
 
-  try {
-    const workers = [];
-    for (let i = 0; i < PARALLEL; i++) workers.push(worker());
-    await Promise.all(workers);
-    clearInterval(uiTimer);
+  await Promise.allSettled(Array.from({ length: PARALLEL }, () => worker()));
+  clearInterval(uiTimer);
 
+  if (networkError) {
+    showView('select');
+    showToast('通信エラー: ' + networkError.message);
+  } else if (completed) {
     const duration = (performance.now() - startTime) / 1000;
     const avgSpeed = totalMB / duration;
     renderProgress({
@@ -1366,19 +1384,14 @@ async function consume(totalMB) {
     $('csub').textContent = avgSpeed > 20 ? '爆速で消費したよ 🚀' : avgSpeed > 5 ? 'いい感じ ✨' : 'おつかれさま 🎉';
     showView('complete');
     spawnConfetti();
-  } catch (e) {
-    clearInterval(uiTimer);
+  } else {
     showView('select');
-    if (e.name !== 'AbortError') {
-      showToast('通信エラー: ' + e.message);
-    } else {
-      showToast('中止しました');
-    }
-  } finally {
-    STATE.busy = false;
-    STATE.abort = null;
-    document.querySelectorAll('.amount-btn').forEach(b => b.disabled = false);
+    showToast('中止しました');
   }
+
+  STATE.busy = false;
+  STATE.abort = null;
+  document.querySelectorAll('.amount-btn').forEach(b => b.disabled = false);
 }
 
 document.querySelectorAll('.amount-btn').forEach(btn => {
