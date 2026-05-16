@@ -1006,6 +1006,25 @@
   </div>
 </div>
 
+<div class="modal-bg hidden" id="simModal">
+  <div class="modal">
+    <h3 class="modal-title">📱 SIMの電話番号</h3>
+    <p class="modal-sub">この番号で履歴が記録されます。SIM差し替え時は切替してください。</p>
+
+    <div class="sim-input-wrap">
+      <input type="tel" id="simInput" placeholder="09012345678" inputmode="numeric" maxlength="11" autocomplete="off">
+    </div>
+
+    <div class="sim-list-label" id="simListLabel">保存済みのSIM</div>
+    <div class="sim-list" id="simList"></div>
+
+    <div class="modal-actions">
+      <button class="modal-btn-sub" id="simCancelBtn">キャンセル</button>
+      <button class="modal-btn" id="simSaveBtn">保存して切替</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -1435,24 +1454,6 @@ $('simModal').addEventListener('click', (e) => {
 
 loadState();
 </script>
-<div class="modal-bg hidden" id="simModal">
-  <div class="modal">
-    <h3 class="modal-title">📱 SIMの電話番号</h3>
-    <p class="modal-sub">この番号で履歴が記録されます。SIM差し替え時は切替してください。</p>
-
-    <div class="sim-input-wrap">
-      <input type="tel" id="simInput" placeholder="09012345678" inputmode="numeric" maxlength="11" autocomplete="off">
-    </div>
-
-    <div class="sim-list-label" id="simListLabel">保存済みのSIM</div>
-    <div class="sim-list" id="simList"></div>
-
-    <div class="modal-actions">
-      <button class="modal-btn-sub" id="simCancelBtn">キャンセル</button>
-      <button class="modal-btn" id="simSaveBtn">保存して切替</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
